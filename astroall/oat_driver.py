@@ -1,7 +1,8 @@
 """Small native INDI OAT driver. Serial commands run only in this process.
 
 Run under indiserver through indi_astroall_oat. Does not expose calibration,
-sync, set-home, Hall homing or firmware-upload commands.
+coordinate sync (:CM#), set-home, Hall homing or firmware-upload commands.
+GPS sync (:gT#) is exposed as an explicit OAT_GPS_SYNC switch.
 """
 from datetime import datetime,timezone
 import json
@@ -20,15 +21,16 @@ DEVICE='Astro One4All OAT'
 class Driver:
     def __init__(self,output=None,opener=None):
         self.output=output or sys.stdout;self.opener=opener or self.open_serial
-        self.serial=None;self.protocol=None;self.properties={};self.lease={};self.pulses={}
+        self.serial=None;self.protocol=None;self.serial_port=None;self.serial_baud=None;self.properties={};self.lease={};self.pulses={}
         self.next_poll=0;self.poll_time=0;self.target_deadline=None
         self.define('CONNECTION','Switch',{'CONNECT':'Off','DISCONNECT':'On'},rule='OneOfMany')
         self.define('DEVICE_PORT','Text',{'PORT':'/dev/ttyACM0'})
         self.define('DEVICE_BAUD_RATE','Switch',{f'BAUD_{x}':'On' if x==19200 else 'Off' for x in (9600,19200,38400,57600,115200)},rule='OneOfMany')
         self.define('DRIVER_INFO','Text',{'DRIVER_NAME':'Astro One4All OAT','DRIVER_EXEC':'indi_astroall_oat','DRIVER_VERSION':'0.3','DRIVER_INTERFACE':'5'},permission='ro')
         self.define('FIRMWARE_INFO','Text',{'PRODUCT':'Sin consultar','VERSION':'Sin consultar','UTC':''},permission='ro')
-        self.define('OAT_SITE_TIME','Text',{k:'' for k in ('UTC','LAT','LON','MONOTONIC','LST_HOURS','OAT_HA_HOURS','SOURCE')},permission='ro')
+        self.define('OAT_SITE_TIME','Text',{k:'' for k in ('UTC','LAT','LON','MONOTONIC','LST_HOURS','OAT_HA_HOURS','SOURCE','GPS_SYNC')},permission='ro')
         self.define('OAT_READ_SITE_TIME','Switch',{'READ':'Off'},rule='AtMostOne')
+        self.define('OAT_GPS_SYNC','Switch',{'SYNC':'Off'},rule='AtMostOne')
         self.define('OAT_STATUS','Text',{'STATE':'Disconnected','RAW':'','POSITION_SOURCE':'Calculated motor steps; no encoders'},permission='ro')
         self.define('EQUATORIAL_EOD_COORD','Number',{'RA':0,'DEC':0},bounds={'RA':(0,24,0),'DEC':(-90,90,0)})
         self.define('ON_COORD_SET','Switch',{'TRACK':'On'},rule='OneOfMany')
@@ -94,17 +96,44 @@ class Driver:
             for direction in list(self.lease):
                 try: self.protocol.move(direction,False)
                 except Exception: pass
-        if self.serial: self.serial.close()
-        self.serial=self.protocol=None;self.lease.clear();self.pulses.clear();self.target_deadline=None
+        # The serial port deliberately stays open: closing it drops DTR and
+        # the Mega auto-resets, losing Home. It is closed only on process
+        # exit or when the port/baud changes (close_serial).
+        self.protocol=None;self.lease.clear();self.pulses.clear();self.target_deadline=None
         self.update('CONNECTION',{'CONNECT':'Off','DISCONNECT':'On'})
+
+    def close_serial(self):
+        if self.serial:
+            try: self.serial.close()
+            except Exception: pass
+        self.serial=None;self.serial_port=None;self.serial_baud=None
 
     def connect(self):
         port=self.properties['DEVICE_PORT']['values']['PORT']
         if not port.startswith('/dev/') or len(port)>256: raise ValueError('Puerto Linux inválido.')
         baud=int(next(k.removeprefix('BAUD_') for k,v in self.properties['DEVICE_BAUD_RATE']['values'].items() if v=='On'))
         try:
-            self.serial=self.opener(port,baud);self.protocol=OATProtocol(self.serial)
-            product,version=self.protocol.identify();utc=datetime.now(timezone.utc).isoformat()
+            # Reuse the already-open port when it matches: opening a ttyACM
+            # asserts DTR and the Mega auto-resets, losing Home. The port
+            # stays open across disconnects (see disconnect), so only the
+            # first open after plugging in the USB can still reset it once.
+            reused=self.serial is not None and self.serial_port==port and self.serial_baud==baud
+            if reused:
+                self.serial.reset_input_buffer()
+            else:
+                self.close_serial()
+                self.serial=self.opener(port,baud);self.serial_port=port;self.serial_baud=baud
+            self.protocol=OATProtocol(self.serial)
+            try:
+                product,version=self.protocol.identify()
+            except Exception:
+                if not reused: raise
+                # Cached port went stale (cable unplugged, board power-cycled):
+                # one fresh open, which may reset the board once.
+                self.close_serial();self.serial=self.opener(port,baud);self.serial_port=port;self.serial_baud=baud
+                self.protocol=OATProtocol(self.serial)
+                product,version=self.protocol.identify()
+            utc=datetime.now(timezone.utc).isoformat()
             self.update('FIRMWARE_INFO',{'PRODUCT':product,'VERSION':version,'UTC':utc})
             record={'utc':utc,'port':port,'baud':baud,'framing':'8N1',':GVP#':product+'#',':GVN#':version+'#'}
             path=Path.home()/'.local/state/astroall/oat-identity.jsonl';path.parent.mkdir(parents=True,exist_ok=True)
@@ -132,6 +161,21 @@ class Driver:
         except Exception as exc:
             self.update('OAT_SITE_TIME',state='Alert');self.update('OAT_READ_SITE_TIME',{'READ':'Off'},'Alert')
             self.message('Hora/ubicación OAT no importadas: '+str(exc))
+            if self.protocol.failed: raise
+
+    def gps_sync_site_time(self):
+        from .mount_time import sync_site_time
+        try:
+            self.update('OAT_GPS_SYNC',{'SYNC':'Off'},'Busy')
+            result=sync_site_time(self.protocol)
+            self.update('OAT_SITE_TIME',result)
+            fixed=result['GPS_SYNC']=='1'
+            self.update('OAT_GPS_SYNC',{'SYNC':'Off'},'Ok' if fixed else 'Alert')
+            if not fixed:
+                self.message('GPS sin fix en 30 s; se usan hora/ubicación almacenadas. Confirma el GPS en el LCD.')
+        except Exception as exc:
+            self.update('OAT_SITE_TIME',state='Alert');self.update('OAT_GPS_SYNC',{'SYNC':'Off'},'Alert')
+            self.message('Sincronización GPS OAT falló: '+str(exc))
             if self.protocol.failed: raise
 
     def process(self,element):
@@ -165,6 +209,10 @@ class Driver:
             if name=='OAT_READ_SITE_TIME':
                 if self.lease or self.pulses or self.target_deadline: raise RuntimeError('Lee la hora/ubicación entre movimientos y pulsos de guiado.')
                 self.read_site_time();return
+            if name=='OAT_GPS_SYNC':
+                if self.lease or self.pulses or self.target_deadline: raise RuntimeError('Sincroniza el GPS entre movimientos y pulsos de guiado.')
+                # :gT# can block up to ~40 s; status polling pauses meanwhile.
+                self.gps_sync_site_time();return
             if name=='ON_COORD_SET':
                 if values.get('TRACK')!='On': raise ValueError('Solo GoTo con seguimiento; Sync no está expuesto.')
                 self.update(name,{'TRACK':'On'});return
@@ -268,6 +316,6 @@ def main():
                 driver.process(item)
             except queue.Empty: pass
             driver.tick()
-    finally: driver.disconnect()
+    finally: driver.disconnect();driver.close_serial()
 
 if __name__=='__main__': main()

@@ -154,7 +154,7 @@ class HandController:
                     elif action=='track': self.client.switch(self.device,'TELESCOPE_TRACK_STATE','TRACK_ON' if args[0] else 'TRACK_OFF')
                     elif action=='rate':
                         keys=list(self.client.get(self.device,'TELESCOPE_SLEW_RATE')['values']);self.client.switch(self.device,'TELESCOPE_SLEW_RATE',keys[int(args[0])])
-                    elif action=='read_time': self.client.switch(self.device,'OAT_READ_SITE_TIME','READ')
+                    elif action=='gps_sync': self.client.switch(self.device,'OAT_GPS_SYNC','SYNC')
                     elif action=='home': self.held=None;self.client.switch(self.device,'OAT_EXISTING_HOME','GO')
                     elif action=='park': self.held=None;self.client.switch(self.device,'TELESCOPE_PARK','PARK' if args[0] else 'UNPARK')
                     elif action=='goto': self.held=None;self.client.goto_eod(self.device,*args)

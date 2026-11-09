@@ -8,7 +8,7 @@ class RoundedButton(tk.Canvas):
         self.primary,self.danger,self.navigation=primary,danger,navigation
         self.disabled=self.hover=self.pressed=self.selected=self.focused=False
         self.typeface=tkfont.Font(family=app.font,size=10,weight='bold' if primary else 'normal')
-        super().__init__(parent,width=width or max(38,self.typeface.measure(text)+26),height=35 if navigation else 30,
+        super().__init__(parent,width=width or max(38,self.typeface.measure(text)+26),height=35 if navigation else 28,
                          bg=parent.cget('bg'),highlightthickness=0,bd=0,takefocus=1,cursor='hand2')
         self.bind('<Configure>',lambda e:self.redraw())
         self.bind('<Enter>',lambda e:self.change(hover=True));self.bind('<Leave>',lambda e:self.change(hover=False,pressed=False))
@@ -49,7 +49,7 @@ class RoundedButton(tk.Canvas):
         if not self.winfo_exists():return
         c=self.app.colors;super().configure(bg=self.master.cget('bg'))
         self.delete('all');w=max(self.winfo_width(),int(self.cget('width')));h=int(self.cget('height'));r=10
-        fill=c['primary'] if self.primary else c['field']
+        fill=c['danger'] if self.danger else c['primary'] if self.primary else c['field']
         if self.navigation:fill=c['field'] if self.selected or self.hover else c['sidebar']
         elif self.hover and not self.disabled:fill=c['border'] if not self.primary else c['primary']
         if self.disabled:fill=c['card']
@@ -62,7 +62,7 @@ class RoundedButton(tk.Canvas):
                 self.create_oval(left,top,left+2*radius,top+2*radius,fill=color,outline='')
         rounded(1,1,w-1,h-1,outline)
         rounded(2,2,w-2,h-2,fill)
-        foreground=c['muted'] if self.disabled else c['danger'] if self.danger else c['accent'] if self.selected else c['muted'] if self.navigation else c['text']
+        foreground=c['muted'] if self.disabled else c['text'] if self.danger else c['accent'] if self.selected else c['muted'] if self.navigation else c['text']
         if self.navigation and self.selected:self.create_line(7,10,7,h-10,fill=c['accent'],width=3,capstyle='round')
         self.create_text(18 if self.navigation else w/2,h/2+(1 if self.pressed else 0),text=self.text,
                          anchor='w' if self.navigation else 'center',fill=foreground,font=self.typeface)

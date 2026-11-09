@@ -2,8 +2,10 @@ from datetime import datetime,timezone
 import io,json,os,tempfile,time,unittest
 from pathlib import Path
 from unittest.mock import patch,MagicMock
+import xml.etree.ElementTree as ET
 from astroall.catalog import Target
-from astroall.mount_time import read_site_time
+from astroall.mount_time import gps_sync,read_site_time,sync_site_time
+from astroall.oat_driver import Driver,DEVICE
 from astroall.oat_protocol import OATProtocol
 from astroall.timekeeping import import_mount_time,load_settings,utc_now,boot_id,clock_snapshot
 from astroall.sky import Site,visibility_label,atlas_visibility,visibility
@@ -19,6 +21,34 @@ class GPSPlanningTests(unittest.TestCase):
         self.assertEqual(float(result['OAT_HA_HOURS']),3)
         self.assertTrue(all(cmd.startswith((':G',':XG')) for cmd in serial.commands))
         self.assertNotIn(':gT#',serial.commands)
+
+    def test_gps_sync_is_explicit_single_char_reply(self):
+        serial=SerialFake();protocol=OATProtocol(serial)
+        self.assertTrue(gps_sync(protocol))
+        self.assertEqual(serial.commands,[':gT30000#'])
+
+    def test_gps_sync_then_read_marks_fresh_fix(self):
+        serial=SerialFake();result=sync_site_time(OATProtocol(serial))
+        self.assertEqual(result['GPS_SYNC'],'1')
+        self.assertIn(':gT#',result['SOURCE'])
+        self.assertEqual(float(result['LAT']),17);self.assertEqual(float(result['LON']),-96)
+        self.assertEqual(serial.commands[0],':gT30000#')
+
+    def test_gps_sync_without_fix_keeps_stored_values_and_warns(self):
+        serial=SerialFake();serial.gt='0'
+        result=sync_site_time(OATProtocol(serial))
+        self.assertEqual(result['GPS_SYNC'],'0')
+        self.assertIn('sin fix',result['SOURCE'])
+        self.assertEqual(float(result['LAT']),17)
+
+    def test_driver_gps_sync_switch_sends_gT_and_updates_site_time(self):
+        serial=SerialFake();d=Driver(io.StringIO(),lambda *_:serial)
+        with tempfile.TemporaryDirectory() as tmp,patch('pathlib.Path.home',return_value=Path(tmp)):
+            d.process(ET.fromstring(f'<newSwitchVector device="{DEVICE}" name="CONNECTION"><oneSwitch name="CONNECT">On</oneSwitch></newSwitchVector>'))
+            d.process(ET.fromstring(f'<newSwitchVector device="{DEVICE}" name="OAT_GPS_SYNC"><oneSwitch name="SYNC">On</oneSwitch></newSwitchVector>'))
+        self.assertIn(':gT30000#',serial.commands)
+        self.assertEqual(d.properties['OAT_SITE_TIME']['values']['GPS_SYNC'],'1')
+        d.disconnect()
 
     def test_wrong_pc_rtc_uses_monotonic_oat_anchor_and_invalidates_on_reboot(self):
         sample={'UTC':'2026-11-09T03:00:00+00:00','LAT':'17','LON':'-96','MONOTONIC':'1000'}

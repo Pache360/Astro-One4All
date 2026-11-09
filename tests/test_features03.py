@@ -49,15 +49,17 @@ class GeometryTests(unittest.TestCase):
         with self.assertRaises(ValueError): mosaic(Position(0,0),120,120,9,9)
 
 class SerialFake:
-    def __init__(self): self.commands=[];self.buffer=bytearray();self.closed=False;self.ms='0';self.track=True
+    def __init__(self): self.commands=[];self.buffer=bytearray();self.closed=False;self.ms='0';self.gt='1';self.identify_fails=0;self.track=True
     def write(self,data):
         command=data.decode();self.commands.append(command)
         response={':GVP#':'OpenAstroTracker#',':GVN#':'v1.13.22#',':GR#':'23:59:55#',':GD#':'-00*30:00#',':GX#':'Idle,--T,0,0,0,235955,-003000,#',':MS#':self.ms}
-        response.update({':GC#':'11/08/26#',':GL#':'21:00:00#',':GG#':'+06#',':Gt#':'+17*00#',':Gg#':'+096*00#',':XGL#':'060000#',':XGH#':'030000#'})
-        if command.startswith((':Sr',':Sd',':MT')): reply='1'
+        response.update({':GC#':'11/08/26#',':GL#':'21:00:00#',':GG#':'+06#',':Gt#':'+17*00#',':Gg#':'+096*00#',':XGL#':'060000#',':XGH#':'030000#',':gT30000#':self.gt})
+        if command==':GVP#' and self.identify_fails>0: self.identify_fails-=1;reply=''
+        elif command.startswith((':Sr',':Sd',':MT')): reply='1'
         else: reply=response.get(command,'')
         self.buffer.extend(reply.encode());return len(data)
     def flush(self): pass
+    def reset_input_buffer(self): self.buffer.clear()
     def read(self,size):
         data=bytes(self.buffer[:size]);del self.buffer[:size];return data
     def close(self): self.closed=True
@@ -88,6 +90,45 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn(':Qn#',serial.commands);self.assertFalse(d.lease)
         self.assertFalse(any(x.startswith((':X','Main','MHR','MHD',':CM',':SH')) and x not in (':XGL#',':XGH#') for x in serial.commands))
         d.disconnect()
+
+    def test_driver_disconnect_keeps_port_open_and_reconnect_reuses_it(self):
+        opens=[];serial=SerialFake()
+        def opener(*args): opens.append(args);return serial
+        d=Driver(io.StringIO(),opener)
+        connect=f'<newSwitchVector device="{DEVICE}" name="CONNECTION"><oneSwitch name="CONNECT">On</oneSwitch></newSwitchVector>'
+        disconnect=f'<newSwitchVector device="{DEVICE}" name="CONNECTION"><oneSwitch name="DISCONNECT">On</oneSwitch></newSwitchVector>'
+        with tempfile.TemporaryDirectory() as tmp,patch('pathlib.Path.home',return_value=Path(tmp)):
+            d.process(ET.fromstring(connect))
+            self.assertEqual(len(opens),1);self.assertFalse(serial.closed)
+            d.process(ET.fromstring(disconnect))
+            self.assertIs(d.serial,serial);self.assertFalse(serial.closed)
+            d.process(ET.fromstring(connect))
+        self.assertEqual(len(opens),1)
+        self.assertEqual(serial.commands.count(':GVP#'),2)
+        d.disconnect();d.close_serial();self.assertTrue(serial.closed)
+
+    def test_driver_reconnect_after_stale_port_reopens_once(self):
+        opens=[];serial=SerialFake()
+        def opener(*args): opens.append(args);return serial
+        d=Driver(io.StringIO(),opener)
+        connect=f'<newSwitchVector device="{DEVICE}" name="CONNECTION"><oneSwitch name="CONNECT">On</oneSwitch></newSwitchVector>'
+        disconnect=f'<newSwitchVector device="{DEVICE}" name="CONNECTION"><oneSwitch name="DISCONNECT">On</oneSwitch></newSwitchVector>'
+        with tempfile.TemporaryDirectory() as tmp,patch('pathlib.Path.home',return_value=Path(tmp)):
+            d.process(ET.fromstring(connect))
+            d.process(ET.fromstring(disconnect))
+            serial.identify_fails=1
+            d.process(ET.fromstring(connect))
+        self.assertEqual(len(opens),2)
+        self.assertEqual(serial.commands.count(':GVP#'),3)
+        d.disconnect();d.close_serial()
+
+    def test_driver_home_switch_moves_to_existing_home(self):
+        serial=SerialFake();d=Driver(io.StringIO(),lambda *_:serial)
+        with tempfile.TemporaryDirectory() as tmp,patch('pathlib.Path.home',return_value=Path(tmp)):
+            d.process(ET.fromstring(f'<newSwitchVector device="{DEVICE}" name="CONNECTION"><oneSwitch name="CONNECT">On</oneSwitch></newSwitchVector>'))
+        d.process(ET.fromstring(f'<newSwitchVector device="{DEVICE}" name="OAT_EXISTING_HOME"><oneSwitch name="GO">On</oneSwitch></newSwitchVector>'))
+        self.assertIn(':hF#',serial.commands)
+        d.disconnect();d.close_serial()
 
 class GuidingTests(unittest.TestCase):
     def test_fragmented_events_and_real_settle_failure(self):

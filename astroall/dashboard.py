@@ -19,9 +19,9 @@ from .solve import drift_report, solve_jpeg
 from .timekeeping import clock_snapshot, load_settings
 from . import __version__
 
-DAY = dict(bg='#0b101b', sidebar='#0e1421', card='#131c2c', field='#192438',
-           border='#243047', text='#e7edf6', muted='#8b9bb4', accent='#afa2ff',
-           primary='#8270e7', success='#72d9bf', danger='#ed929b', preview='#090e18')
+DAY = dict(bg='#0B1020', sidebar='#0C1220', card='#141A2E', field='#1B2438',
+           border='#27324E', text='#F2F5FA', muted='#8B9BB4', accent='#E5484D',
+           primary='#E5484D', success='#3FB97F', danger='#E5484D', preview='#090E18')
 NIGHT = dict(bg='#080000', sidebar='#0d0101', card='#170303', field='#230505',
              border='#40100d', text='#d76b57', muted='#9b4438', accent='#ed7159',
              primary='#792b23', success='#d46b55', danger='#ef7963', preview='#070000')
@@ -132,7 +132,7 @@ class Dashboard:
     def card(self, parent, title, eyebrow=None):
         outer = self.frame(parent,'card',highlightbackground=self.colors['border'],highlightthickness=1)
         inside = self.frame(outer,'card')
-        inside.pack(fill='both',expand=True,padx=14,pady=8)
+        inside.pack(fill='both',expand=True,padx=14,pady=6)
         if eyebrow:
             self.label(inside,eyebrow,size=8,color='accent',bold=True).pack(anchor='w',pady=(0,5))
         if title:

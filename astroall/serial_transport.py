@@ -1,4 +1,12 @@
-"""One-owner Linux serial transport, without user-space reset-line pulses."""
+"""One-owner Linux serial transport, without user-space reset-line pulses.
+
+Opening a ttyACM still asserts DTR in the kernel the first time after the
+USB is plugged in, and the Mega auto-resets on that edge: that first reset
+cannot be avoided from software. The driver therefore keeps the port open
+across disconnects (oat_driver caches the handle) so later connects reuse
+it and do not reset the board again. Do not open the port just to probe
+it while the driver owns it; probe() refuses when fuser sees it busy.
+"""
 from pathlib import Path
 import subprocess
 import time

@@ -1,7 +1,14 @@
 """Read OAT's stored site/clock with the v1.13 Meade sign conventions.
 
-These getters cannot establish a current satellite fix. The LCD is the source
-of that confirmation; no acquisition, clock-setting or EEPROM command is sent.
+read_site_time() only reads: it cannot establish a current satellite fix.
+The LCD is the source of that confirmation; no acquisition, clock-setting
+or EEPROM command is sent by the reader.
+
+gps_sync() is the explicit opt-in exception: it sends :gT<timeout_ms>#
+(the OAT GPS acquisition command, ported from Poly OAT) and waits for the
+single-character reply '1' (fix) or '0' (timeout). It only runs when the
+user asks for it, never on connect and never inside read_site_time().
+No EEPROM command is sent anywhere in this module.
 """
 from datetime import datetime,timedelta,timezone
 import re
@@ -20,13 +27,47 @@ def hours(text):
     if h>=24 or m>=60 or s>=60: raise ValueError('Hora OAT fuera de rango.')
     return h+m/60+s/3600
 
+def gps_sync(protocol, timeout_ms=30000):
+    """Send :gT<timeout_ms># and wait for the GPS fix reply.
+
+    Returns True when the firmware answers '1' (fix acquired; clock and
+    site updated from the NEO-6M), False when it answers '0' (no fix
+    within the timeout). The call can block up to timeout_ms plus a 10 s
+    margin: run it from the driver process or a worker thread, never
+    from the UI thread. Ported from Poly OAT (gps.py: fetch_gps /
+    gps_sync). This is a GPS acquisition command, not an EEPROM write
+    and not a motion-parameter change.
+    """
+    if not 1000 <= int(timeout_ms) <= 120000:
+        raise ValueError('Tiempo máximo GPS fuera de rango (1000–120000 ms).')
+    reply = protocol.command(':gT%d#' % int(timeout_ms), 'char', timeout=int(timeout_ms) / 1000 + 10)
+    if reply not in ('0', '1'):
+        raise ValueError('Respuesta GPS OAT no reconocida: %r.' % reply)
+    return reply == '1'
+
+def sync_site_time(protocol, timeout_ms=30000):
+    """Sync clock/site from GPS (:gT#) and then read the stored values.
+
+    Returns the read_site_time() dict plus 'GPS_SYNC' ('1' with fix, '0'
+    without) and a SOURCE that says whether the values come from a fresh
+    GPS fix or from the stored clock/site. When there is no fix the
+    stored values are still returned, clearly marked, so the caller can
+    decide: nothing here invents a position or a time.
+    """
+    synced = gps_sync(protocol, timeout_ms)
+    result = read_site_time(protocol)
+    result['GPS_SYNC'] = '1' if synced else '0'
+    result['SOURCE'] = ('OAT GPS sync (:gT#); fix adquirido' if synced else
+                        'OAT stored clock/site; GPS sync sin fix (:gT#=0) — confirma GPS en el LCD')
+    return result
+
 def read_site_time(protocol):
     command=lambda text:protocol.command(text,'hash')
     date=command(':GC#');before=time.monotonic();clock=command(':GL#');sampled=(before+time.monotonic())/2
     offset=command(':GG#');latitude=degrees(command(':Gt#'),90)
     # LX200/OAT Gg: west positive; the rest of the application: east positive.
     longitude=(-degrees(command(':Gg#'),360)+180)%360-180
-    if command(':GC#')!=date: raise ValueError('Cambió la fecha al consultar OAT; pulsa Leer hora/ubicación otra vez.')
+    if command(':GC#')!=date: raise ValueError('Cambió la fecha al consultar OAT; pulsa Sincronizar GPS otra vez.')
     if not re.fullmatch(r'[+-]?\d{1,2}',offset) or not -14<=int(offset)<=14: raise ValueError('Desfase UTC OAT inválido.')
     local=datetime.strptime(date+' '+clock,'%m/%d/%y %H:%M:%S')
     utc=(local+timedelta(hours=int(offset))).replace(tzinfo=timezone.utc)
