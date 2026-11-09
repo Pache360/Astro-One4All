@@ -25,7 +25,6 @@ apt-get install -y --no-install-recommends live-build debootstrap xorriso \
     grub-pc-bin grub-efi-amd64-bin mtools dosfstools squashfs-tools curl ca-certificates
 cd -- "$BUILD"
 lb config --distribution trixie --architectures amd64 --binary-image iso-hybrid \
-    --cache-stages rootfs \
     --archive-areas 'main contrib non-free-firmware' --debian-installer none \
     --apt-recommends false --firmware-chroot false --firmware-binary false --bootloaders 'syslinux,grub-efi' \
     --chroot-squashfs-compression-type zstd --chroot-squashfs-compression-level 3 \
