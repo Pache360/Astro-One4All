@@ -1,0 +1,61 @@
+# Construcción automática de la Live ISO con GitHub Actions.
+#
+# Se dispara con cada push a main o a parche-gps-home, o a mano desde la
+# pestaña Actions (Run workflow). La ISO queda en Actions > Artifacts por
+# 30 días y, si el push es una etiqueta v* (por ejemplo v0.3.14), se adjunta
+# además como borrador de Release junto con sus sumas SHA256.
+#
+# La receta (system/build-live.sh) exige Debian 13 (trixie) amd64 y root, por
+# eso el trabajo corre dentro de un contenedor debian:trixie con privilegios.
+# No graba ninguna USB: solo produce la ISO.
+name: Construir Live ISO
+
+on:
+  push:
+    branches: [main, parche-gps-home]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+      options: --privileged
+    steps:
+      - name: Código
+        uses: actions/checkout@v4
+
+      - name: Espacio disponible
+        run: df -h
+
+      - name: Construir la ISO
+        run: bash system/build-live.sh
+
+      - name: Renombrar ISO
+        run: |
+          cd build/live
+          mv live-image-amd64.hybrid.iso astro-one4all-live-amd64.iso
+          sha256sum astro-one4all-live-amd64.iso > SHA256SUMS
+
+      - name: Subir ISO como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: astro-one4all-live-iso
+          path: |
+            build/live/astro-one4all-live-amd64.iso
+            build/live/SHA256SUMS
+          retention-days: 30
+
+      - name: Publicar Release (solo etiquetas v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/live/astro-one4all-live-amd64.iso
+            build/live/SHA256SUMS
+          draft: true
+          generate_release_notes: true
