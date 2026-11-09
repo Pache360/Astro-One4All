@@ -1,0 +1,126 @@
+#!/bin/bash
+set -euo pipefail
+export LC_ALL=C
+test "$(dpkg-query -W -f='${db:Status-Status}' user-setup)" = installed
+if ! command -v qemu-ga >/dev/null; then
+    apt-get install -y --no-install-recommends qemu-guest-agent
+fi
+# Keep the Acer profile small, including Intel graphics and the common Wi-Fi families.
+# Older live-build defaults otherwise bring in large unrelated GPU/server firmware sets.
+python3 - <<'PY'
+import subprocess
+keep={'firmware-iwlwifi','firmware-intel-graphics','firmware-atheros','firmware-realtek','firmware-brcm80211','firmware-linux-free','firmware-intel-misc'}
+result=subprocess.run(['dpkg-query','-W','-f=${binary:Package} ${db:Status-Status}\\n','firmware-*'],capture_output=True,text=True,check=False)
+remove=[]
+for line in result.stdout.splitlines():
+    fields=line.split()
+    if len(fields)==2 and fields[1]=='installed' and fields[0].split(':')[0] not in keep:
+        remove.append(fields[0])
+if remove:
+    subprocess.run(['apt-get','purge','-y']+remove,check=True)
+PY
+if ! gphoto2 --version | grep -E '^libgphoto2[[:space:]]+2\.5\.33([[:space:]]|$)' >/dev/null; then
+    cd /usr/local/src
+    tar -xf libgphoto2-2.5.33.tar.xz
+    cd libgphoto2-2.5.33
+    ./configure --prefix=/usr/local --libdir=/usr/local/lib --with-camlibs=ptp2
+    make -j2
+    make install
+    ldconfig
+fi
+# Earth orientation for offline polar/sidereal calculations on this build date.
+mkdir -p /usr/share/astroall/iers
+if ! test -s /usr/share/astroall/iers/finals2000A.all; then
+    curl --fail --location --max-time 120 --proto '=https' \
+        https://datacenter.iers.org/data/9/finals2000A.all -o /usr/share/astroall/iers/finals2000A.all
+fi
+sha256sum /usr/share/astroall/iers/finals2000A.all > /usr/share/astroall/iers/SHA256SUMS
+# Generate device permissions from the new library, including the R50 USB ID.
+mkdir -p /etc/udev/rules.d
+/usr/local/lib/libgphoto2/print-camera-list udev-rules version 201 \
+    > /etc/udev/rules.d/90-astroall-cameras.rules
+# Assert both CLI and Python can load the replacement library, without a camera.
+gphoto2 --list-cameras | grep -F '"Canon EOS R50"'
+python3 - <<'PY'
+import gphoto2 as gp
+abilities = gp.CameraAbilitiesList()
+abilities.load()
+assert abilities.lookup_model('Canon EOS R50') >= 0
+PY
+mkdir -p /etc/lightdm/lightdm.conf.d /etc/xdg/autostart /etc/live/config.conf.d \
+    /etc/skel/astroall-data/indexes /usr/local/bin /etc/systemd/journald.conf.d
+touch /etc/astroall-live
+cat > /etc/lightdm/lightdm.conf.d/50-astroall.conf <<'EOF'
+[Seat:*]
+autologin-user=astro
+autologin-user-timeout=0
+user-session=LXDE
+EOF
+cat > /etc/live/config.conf.d/10-astroall.conf <<'EOF'
+LIVE_USER_DEFAULT_GROUPS="audio cdrom video plugdev netdev dialout sudo"
+EOF
+cat > /usr/local/bin/astroall <<'EOF'
+#!/bin/sh
+export PYTHONPATH="/opt/astroall${PYTHONPATH:+:$PYTHONPATH}"
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+exec python3 -m astroall "$@"
+EOF
+chmod +x /usr/local/bin/astroall
+cat > /etc/xdg/autostart/astroall.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Astro One4All
+Comment=Observatorio portátil
+Exec=/usr/local/bin/astroall panel
+Terminal=false
+Categories=Education;Science;Astronomy;
+EOF
+cp /etc/xdg/autostart/astroall.desktop /usr/share/applications/astroall.desktop
+cat > /etc/xdg/autostart/light-locker.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Screen Locker
+Hidden=true
+EOF
+find /opt/astroall/astroall -name '*.py' -type f -print0 | sort -z | xargs -0 sha256sum > /opt/astroall/source-sha256.txt
+cat > /etc/default/zramswap <<'EOF'
+ALGO=lz4
+PERCENT=25
+PRIORITY=100
+EOF
+cat > /etc/systemd/journald.conf.d/astroall.conf <<'EOF'
+[Journal]
+Storage=volatile
+RuntimeMaxUse=16M
+EOF
+# Source, license texts and build logs remain in the image for this local prototype.
+# Read-only boot diagnosis; never connect a camera or move the mount at startup.
+cat > /etc/systemd/system/astroall-check.service <<'EOF'
+[Unit]
+Description=Astro One4All read-only startup check
+After=live-config.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/astroall doctor
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl enable astroall-check.service
+# Avoid sleeping during an unattended acquisition; screen dimming is manual.
+mkdir -p /etc/systemd/logind.conf.d
+cat > /etc/systemd/logind.conf.d/astroall.conf <<'EOF'
+[Login]
+HandleLidSwitch=ignore
+HandleLidSwitchExternalPower=ignore
+IdleAction=ignore
+EOF
+# Do not auto-start INDI or connect devices: the app owns session configuration.
+python3 /opt/astroall/system/power_policy.py
+dpkg-query -W > /opt/astroall/package-versions.txt
+gphoto2 --version > /opt/astroall/gphoto-version.txt
+rm -f /etc/dpkg/dpkg.cfg.d/02build-speed

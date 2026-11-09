@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "astro-one4all"
+version = "0.3.13"
+description = "Own lightweight astrophotography appliance for older laptops"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[project.scripts]
+astroall = "astroall.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["astroall*"]
+
+[tool.setuptools.package-data]
+astroall = ["data/*.sqlite3", "data/*.json", "data/*.txt"]

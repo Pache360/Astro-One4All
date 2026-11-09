@@ -1,0 +1,16 @@
+#!/bin/bash
+set -euo pipefail
+export LC_ALL=C
+SOURCE=/usr/local/src/phd2-2.6.13.tar.gz
+printf '%s  %s\n' 619993ce5a8baf1c62ba5dcb3ae485b4b82e0d8ce247d6b565b1db6a7de274cf "$SOURCE" | sha256sum --check -
+if ! test -x /usr/local/bin/phd2; then
+    mkdir -p /usr/local/src/phd2-build
+    tar -xzf "$SOURCE" -C /usr/local/src/phd2-build --strip-components=1
+    cmake -S /usr/local/src/phd2-build -B /usr/local/src/phd2-build/build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DOPENSOURCE_ONLY=ON \
+      -DUSE_SYSTEM_LIBINDI=ON -DUSE_SYSTEM_CFITSIO=ON -DUSE_SYSTEM_EIGEN3=ON \
+      -DUSE_SYSTEM_GTEST=ON -DUSE_SYSTEM_LIBUSB=ON
+    cmake --build /usr/local/src/phd2-build/build --target phd2 -j 2
+    cmake --install /usr/local/src/phd2-build/build
+fi
+install -m 755 /opt/astroall/system/indi_astroall_oat /usr/local/bin/indi_astroall_oat

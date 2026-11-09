@@ -1,0 +1,11 @@
+name: Probar otro equipo
+description: Comparte una prueba con otra computadora, cámara o variante OAT.
+title: "[Equipo] "
+body:
+  - type: textarea
+    id: equipment
+    attributes:
+      label: Modelo, versiones y prueba realizada
+      description: "Incluye Astro One4All, CPU/RAM, arranque, modelo de cámara, firmware OAT y resultados. Distingue pruebas físicas de simuladas."
+    validations:
+      required: true

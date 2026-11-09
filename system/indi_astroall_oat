@@ -1,0 +1,3 @@
+#!/bin/sh
+cd /opt/astroall
+exec /usr/bin/python3 -m astroall.oat_driver

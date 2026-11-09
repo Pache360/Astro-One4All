@@ -1,0 +1,66 @@
+{
+  "status": "not_hardware_validated",
+  "computer": {
+    "model": "Acer ES1-111",
+    "ram_mib": 2048,
+    "boot": "USB",
+    "uefi_bits": null
+  },
+  "camera": {
+    "model": "Canon EOS R50",
+    "capture_target": "memory card",
+    "quality": "RAW + JPG Med",
+    "focal_length_mm": null,
+    "sensor_width_mm": 22.3,
+    "lenses": [
+      "55-250 mm",
+      "18-45 mm",
+      "50 mm f/1.8",
+      "TTArtisan 10 mm f/2"
+    ],
+    "sd_capacity_gb": 128
+  },
+  "mount": {
+    "model": "OpenAstroTracker",
+    "controller": "Arduino Mega 2560 + RAMPS 1.4",
+    "motors": "2 x NEMA17 17HS4401, 200 steps/rev, rated 1.7 A",
+    "drivers": "TMC2209 standalone, physical 1/64, no UART",
+    "pulleys_gt2_teeth": 16,
+    "lcd": "Keypad Shield 1602",
+    "gps": "NEO-6M TX -> D17/RX2 Serial2",
+    "autopa_installed": false,
+    "encoders_confirmed": false,
+    "homing_sensors_confirmed": false,
+    "prepared_hex": "OAT_Mega2560_RAMPS64_16T_GPS_D17.hex",
+    "prepared_hex_version": "v1.13.22",
+    "installed_firmware_observed": null,
+    "serial_by_id": null,
+    "baud": 19200,
+    "framing": "8N1",
+    "ra_limits_verified_in_app": false,
+    "dec_limits_verified_in_app": false
+  },
+  "guide_camera": {
+    "candidate": "Acteck WM20, Windows WDM image observed",
+    "stars_verified": false,
+    "linux_verified": false,
+    "nexxt_webcam_operational": false
+  },
+  "time": {
+    "timezone": "America/Mexico_City",
+    "gps_time_reference": "UTC",
+    "latitude": null,
+    "longitude": null
+  },
+  "usb": {
+    "capacity_gb": 32,
+    "medium": "microSD U3 + hub USB 3.0",
+    "computer_link": "USB 2.0",
+    "persistent": false
+  },
+  "automatic_recenter": {
+    "enabled": false,
+    "reason": "Needs INDI integration, limits and real tests"
+  },
+  "note": "Equipment inventory for commissioning; this file is not yet loaded by the application."
+}

@@ -1,0 +1,81 @@
+#!/bin/sh
+# Local-only, pinned update. Called by Debian live-config before the desktop.
+set -eu
+VERSION=0.3.13
+LOG=/var/log/astroall-boot-update-0313.log
+STATUS=/var/lib/astroall/boot-update-0313.status
+mkdir -p /var/lib/astroall
+exec >> "$LOG" 2>&1
+echo "=== Astro One4All boot update $VERSION ==="
+date -u
+finish() {
+    code=$?
+    trap - EXIT
+    if [ "$code" -ne 0 ]; then
+        echo "FAILED: $code. The previous application was preserved."
+        printf 'FAILED %s\n' "$code" > "$STATUS"
+        mkdir -p /etc/xdg/autostart
+        cat > /etc/xdg/autostart/astroall-update-error.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Actualizacion Astro One4All pendiente
+Exec=/usr/bin/xterm -hold -T "Actualizacion Astro One4All" -e /bin/cat /var/log/astroall-boot-update-0313.log
+Terminal=false
+EOF
+    fi
+    exit "$code"
+}
+trap finish EXIT
+test "$(id -u)" = 0
+test -f /etc/astroall-live
+test "$(dpkg --print-architecture)" = amd64
+grep -q '/run/live/persistence/' /proc/mounts
+# Never replace a running photo plan or take ownership of a camera connection.
+if pgrep -u astro -f 'python3 -m astroall (panel|capture)' >/dev/null; then
+    echo 'Close the application before running this hook manually.'
+    exit 1
+fi
+# A pinned boot update must never downgrade a newer installed application.
+if [ -f /opt/astroall-current/manifest.json ]; then
+    CURRENT=$(/usr/bin/python3 -c 'import json; print(json.load(open("/opt/astroall-current/manifest.json"))["version"])')
+    if dpkg --compare-versions "$CURRENT" gt "$VERSION"; then
+        printf 'NEWER_VERSION %s\n' "$CURRENT" > "$STATUS"
+        echo "Preserving newer version $CURRENT"
+        exit 0
+    fi
+fi
+if [ -f /opt/astroall-current/manifest.json ] &&
+   echo '__MANIFEST_SHA__  /opt/astroall-current/manifest.json' | sha256sum --status -c - &&
+   test "$(readlink -f /opt/astroall-current)" = /opt/astroall-releases/0.3.13; then
+    echo 'ALREADY_ACTIVE 0.3.13'
+else
+    BASE=/run/live/medium/AstroOne4All-0.3.13-actualizar
+    test -d "$BASE"
+    echo '__ARCHIVE_SHA__  '"$BASE/Astro-One4All-0.3.13-actualizacion.tar.gz" | sha256sum -c -
+    echo '__INSTALLER_SHA__  '"$BASE/install-update.py" | sha256sum -c -
+    /usr/bin/python3 "$BASE/install-update.py" "$BASE/Astro-One4All-0.3.13-actualizacion.tar.gz"
+fi
+# A manual, read-only USB check is available even if camera initialization fails.
+BASE=/run/live/medium/AstroOne4All-0.3.13-actualizar
+HELPER=/run/live/medium/live/config-hooks/canon-usb-check.py
+echo '__HELPER_SHA__  '"$HELPER" | sha256sum -c -
+mkdir -p /opt/astroall-maintenance /usr/local/bin /usr/share/applications
+install -m 644 "$HELPER" /opt/astroall-maintenance/canon-usb-check.py
+cat > /usr/local/bin/astroall-canon-diagnose <<'EOF'
+#!/bin/sh
+exec /usr/bin/xterm -hold -T "Diagnostico USB Canon - sin disparar" -e /usr/bin/python3 /opt/astroall-maintenance/canon-usb-check.py
+EOF
+chmod 755 /usr/local/bin/astroall-canon-diagnose
+cat > /usr/share/applications/astroall-canon-diagnose.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Diagnosticar Canon USB (sin disparar)
+Exec=/usr/local/bin/astroall-canon-diagnose
+Icon=camera-photo
+Terminal=false
+Categories=Education;Science;
+EOF
+/usr/bin/env PYTHONPATH=/opt/astroall-current /usr/bin/python3 -c 'import astroall; assert astroall.__version__ == "0.3.13"; print("ACTIVE_VERSION=" + astroall.__version__)'
+printf 'SUCCESS 0.3.13\n' > "$STATUS"
+rm -f /etc/xdg/autostart/astroall-update-error.desktop
+echo 'SUCCESS. Starting the regular desktop; no photos or mount commands were sent.'

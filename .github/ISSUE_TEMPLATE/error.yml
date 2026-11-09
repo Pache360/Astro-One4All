@@ -1,0 +1,33 @@
+name: Reportar un problema
+description: Ayúdanos a reproducir un fallo de Astro One4All.
+title: "[Error] "
+body:
+  - type: markdown
+    attributes:
+      value: "Versión experimental. Revisa los diagnósticos antes de adjuntarlos: pueden incluir GPS y rutas personales."
+  - type: input
+    id: version
+    attributes:
+      label: Versión de Astro One4All
+      placeholder: "Por ejemplo: 0.3.13"
+    validations:
+      required: true
+  - type: textarea
+    id: equipment
+    attributes:
+      label: Equipo y forma de arranque
+      description: "Computadora, RAM, USB, cámara y firmware de montura. Indica si es equipo real o simulador."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos y resultado
+      description: "Qué hiciste, qué esperabas y qué sucedió. Incluye el mensaje exacto y lo que sí funciona."
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostic
+    attributes:
+      label: Detalles adicionales
+      description: "Adjunta solo información revisada, sin coordenadas, fotografías privadas ni claves."

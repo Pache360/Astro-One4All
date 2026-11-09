@@ -1,0 +1,11 @@
+#!/bin/sh
+# live-build executes binary hooks from inside the binary/ directory.
+set -eu
+test -f isolinux/isolinux.cfg
+test -f boot/grub/config.cfg
+sed -i 's/^timeout .*/timeout 50/' isolinux/isolinux.cfg
+sed -i 's/^menu title.*/menu title Astro One4All - Observatorio portatil/' isolinux/menu.cfg
+sed -i 's/Live system (amd64)/Astro One4All (amd64)/g; s/Live system (amd64 fail-safe mode)/Astro One4All (recuperacion)/g' isolinux/live.cfg boot/grub/grub.cfg
+if ! grep -q '^set timeout=5$' boot/grub/config.cfg; then
+    printf '\nset timeout=5\nset timeout_style=menu\n' >> boot/grub/config.cfg
+fi

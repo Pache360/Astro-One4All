@@ -1,0 +1,56 @@
+{
+  "created_utc": "2026-11-03T14:42:48.706094+00:00",
+  "license": "CC-BY-SA-4.0",
+  "attribution": "OpenNGC: Mattia Verga and contributors. HYG 4.1: David Nash / Astronexus.",
+  "adaptation": "Filtered valid OpenNGC positions; Spanish aliases; HYG stars to magnitude 6.5; SQLite indexes.",
+  "coordinates": "Equatorial J2000; HYG epoch 2000.0. Stars are chart references, not an astrometric solving index.",
+  "objects": 13372,
+  "stars": 8920,
+  "messier_objects": 110,
+  "messier_missing": [],
+  "m102_note": "M102 uses the traditional NGC5866 identification; OpenNGC leaves that Messier cross-reference blank.",
+  "m102_reference": "https://science.nasa.gov/mission/hubble/science/explore-the-night-sky/hubble-messier-catalog/messier-102/",
+  "upstream": {
+    "opengc_revision": "be3cd6c5498806a2fbb2f7e0452ef802dbb02be0",
+    "hyg_revision": "c7f7f883fe678cc7680169a50ccd7dcc49b060ce",
+    "files": [
+      {
+        "file": "NGC.csv",
+        "url": "https://raw.githubusercontent.com/mattiaverga/OpenNGC/be3cd6c5498806a2fbb2f7e0452ef802dbb02be0/database_files/NGC.csv",
+        "sha256": "54abea0b57b0a103831bfc7a8e3a99a23acfbf4bb581fcf3d8af539cbb826c84",
+        "bytes": 3942946
+      },
+      {
+        "file": "addendum.csv",
+        "url": "https://raw.githubusercontent.com/mattiaverga/OpenNGC/be3cd6c5498806a2fbb2f7e0452ef802dbb02be0/database_files/addendum.csv",
+        "sha256": "c93f983dda6780b76b7b2e9271a856a892627710148a982ee98101a54c642fdd",
+        "bytes": 17496
+      },
+      {
+        "file": "CC-BY-SA-4.0.txt",
+        "url": "https://raw.githubusercontent.com/mattiaverga/OpenNGC/be3cd6c5498806a2fbb2f7e0452ef802dbb02be0/LICENSES/CC-BY-SA-4.0.txt",
+        "sha256": "cde7883b9050a1104f4ac19a1572aafd6e5d7323b68351aaf51fbf4beba54966",
+        "bytes": 18375
+      },
+      {
+        "file": "NGC_guide.txt",
+        "url": "https://raw.githubusercontent.com/mattiaverga/OpenNGC/be3cd6c5498806a2fbb2f7e0452ef802dbb02be0/NGC_guide.txt",
+        "sha256": "b7fca022985daa0f41a8bc8dd7028513e4db9ca96a2cfc380b68ff4c2e812810",
+        "bytes": 2935
+      },
+      {
+        "file": "hygdata.csv",
+        "url": "https://raw.githubusercontent.com/astronexus/HYG-Database/c7f7f883fe678cc7680169a50ccd7dcc49b060ce/hyg/CURRENT/hygdata_v41.csv",
+        "sha256": "d9f69fd86bbf90a4e4d52b4c5c53eacfa6dfc0bfdef85bfd94f095e0bebe4ebd",
+        "bytes": 33932548
+      },
+      {
+        "file": "HYG_README.md",
+        "url": "https://raw.githubusercontent.com/astronexus/HYG-Database/c7f7f883fe678cc7680169a50ccd7dcc49b060ce/hyg/README.md",
+        "sha256": "81f765951e60131e49ccc91376815791e130ad1db46047eb1384d3ba6bcb5af4",
+        "bytes": 6416
+      }
+    ]
+  },
+  "skipped_invalid_or_duplicate": 663
+}

@@ -1,0 +1,60 @@
+#!/bin/bash
+set -euo pipefail
+export LC_ALL=C
+export PYTHONPATH=/opt/astroall
+cd /opt/astroall
+xvfb-run -a -s '-screen 0 1366x768x24' python3 -m unittest discover -s tests -v > qa-unit.log 2>&1
+python3 - <<'PY' > qa-integration.json
+import json, math, subprocess, time
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from astroall.indi import IndiClient
+from astroall.timekeeping import clock_snapshot
+from astroall.solve import solve_jpeg
+from astroall.polar import estimate_polar, horizon_vector
+server=subprocess.Popen(['indiserver','-p','17624','indi_simulator_telescope'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+try:
+    time.sleep(2)
+    with IndiClient(port=17624) as client:
+        devices=sorted({dev for dev,name in client.properties if name=='CONNECTION'})
+        assert len(devices)==1, devices
+        device=devices[0]
+        client.connect_mount(device,'','19200')
+        assert client.get(device,'CONNECTION')['values']['CONNECT']=='On'
+        result=client.goto_eod(device,5.0,20.0)
+        client.abort(device)
+    clock=clock_snapshot({'timezone':'America/Mexico_City','longitude':0.0,'clock_confirmed':True},ra_hours=5.0)
+    assert math.isfinite(clock['sidereal_hours']) and math.isfinite(clock['ha_hours'])
+    results={'indi_simulator_connection':True,'goto_request':result,'abort_request':True,'offline_sidereal':clock,'hardware_used':False}
+    # Round-trip synthetic horizon points at different times, using the same
+    # timezone-bearing timestamps produced by the real capture adapter.
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord, EarthLocation, AltAz
+    from astropy.time import Time
+    axis=horizon_vector(2,22)
+    east=(-math.sin(math.radians(2)),math.cos(math.radians(2)),0)
+    vertical=(axis[1]*east[2]-axis[2]*east[1],axis[2]*east[0]-axis[0]*east[2],axis[0]*east[1]-axis[1]*east[0])
+    location=EarthLocation.from_geodetic(-100*u.deg,20*u.deg)
+    samples=[]
+    for n,phase in enumerate((0,30,60)):
+        p=math.radians(phase)
+        vector=tuple(math.cos(math.radians(40))*axis[i]+math.sin(math.radians(40))*(math.cos(p)*east[i]+math.sin(p)*vertical[i]) for i in range(3))
+        instant=datetime(2026,11,3,4,0,tzinfo=timezone.utc)+timedelta(minutes=n)
+        local=SkyCoord(az=math.atan2(vector[1],vector[0])*u.rad,alt=math.asin(vector[2])*u.rad,frame=AltAz(obstime=Time(instant),location=location,pressure=0*u.hPa))
+        sky=local.icrs
+        samples.append({'ra_deg':sky.ra.deg,'dec_deg':sky.dec.deg,'utc':instant.isoformat()})
+    polar=estimate_polar(samples,20,-100)
+    assert abs(polar['alt_adjustment_deg']+2)<0.001, polar
+    assert abs(polar['az_adjustment_deg']+2)<0.001, polar
+    results['polar_astropy_synthetic_roundtrip']=polar
+    sample=Path('/tmp/astroall-qa/apod4.jpg')
+    if sample.is_file():
+        position=solve_jpeg(sample,34,['/usr/share/astrometry'],work_root='/tmp/astroall-qa/work')
+        results['offline_solve']={'ra_deg':position.ra_deg,'dec_deg':position.dec_deg,'sample':'Astrometry.net demo apod4, Noel Carboni; private QA only'}
+        sample.unlink()
+    print(json.dumps(results,indent=2))
+finally:
+    server.terminate()
+    server.wait(timeout=5)
+PY
+echo 'ASTRO ONE4ALL: Linux unit and INDI simulator integration checks passed.'
